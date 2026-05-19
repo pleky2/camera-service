@@ -1,0 +1,36 @@
+# Build outputs
+build/
+Release/
+CameraControlPTP/
+
+# Visual Studio
+.vs/
+*.VC.db
+*.VC.opendb
+*.suo
+
+.github/
+
+# CMake intermediates
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+
+# MSBuild artifacts
+*.obj
+*.iobj
+*.ipdb
+*.pdb
+*.pch
+*.idb
+*.ilk
+*.tlog
+*.lastbuildstate
+*.recipe
+
+# Temporary/log files
+*.log
+*.tmp
+
+*.pdf
+*.sln
