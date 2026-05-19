@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Photobox — Live Camera Control</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<style>
+  :root {
+    --bg: #04080f;
+    --panel: rgba(8,18,38,0.75);
+    --panel-2: rgba(12,24,50,0.9);
+    --border: rgba(59,130,246,0.18);
+    --border-bright: rgba(96,165,250,0.5);
+    --text: #e8f0ff;
+    --text-dim: #6b82a8;
+    --blue: #3b8ef0;
+    --blue-bright: #60a5fa;
+    --blue-neon: #38bdf8;
+    --blue-ultra: rgba(56,189,248,0.07);
+    --green: #22d3a0;
+    --red: #f43f5e;
+    --amber: #fbbf24;
+    --font-sans: 'Inter', system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', 'Consolas', monospace;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-sans);
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background:
+      radial-gradient(ellipse 80% 50% at 50% -10%, rgba(37,99,235,0.18) 0%, transparent 60%),
+      radial-gradient(ellipse 50% 35% at 90% 100%, rgba(14,165,233,0.09) 0%, transparent 55%);
+    pointer-events: none; z-index: 0;
+  }
+  body::after {
+    content: '';
+    position: fixed; inset: 0;
+    background-image:
+      linear-gradient(rgba(59,130,246,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(59,130,246,0.04) 1px, transparent 1px);
+    background-size: 48px 48px;
+    pointer-events: none; z-index: 0;
+  }
+  .noise {
+    position: fixed; inset: 0; pointer-events: none; z-index: 1;
+    opacity: 0.022;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-size: 128px; mix-blend-mode: overlay;
+  }
+  .app-wrapper {
+    position: relative; z-index: 2;
+    max-width: 1280px; margin: 0 auto; padding: 32px 24px 48px;
+  }
+
+  /* HEADER */
+  .app-header { text-align: center; margin-bottom: 32px; }
+  .header-badge {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 4px 14px; border-radius: 999px;
+    border: 1px solid var(--border-bright);
+    background: var(--blue-ultra);
+    color: var(--blue-bright);
+    font-family: var(--font-mono); font-size: 11px;
+    letter-spacing: 0.1em; text-transform: uppercase;
+    margin-bottom: 18px; backdrop-filter: blur(8px);
+  }
+  .badge-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--blue-neon);
+    box-shadow: 0 0 6px var(--blue-neon);
+    animation: pulse-dot 2s ease-in-out infinite;
+  }
+  @keyframes pulse-dot {
+    0%,100% { opacity:1; transform:scale(1); }
+    50% { opacity:0.35; transform:scale(0.75); }
+  }
+  h1 {
+    font-size: clamp(28px, 4.5vw, 52px);
+    font-weight: 700; letter-spacing: -0.025em; line-height: 1.1;
+    background: linear-gradient(135deg, #ffffff 0%, var(--blue-bright) 45%, var(--blue-neon) 100%);
+    -webkit-background-clip: text; background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 10px;
+  }
+  .subtitle {
+    color: var(--text-dim); font-size: 14px;
+    max-width: 500px; margin: 0 auto; line-height: 1.65;
+  }
+
+  /* CONTROLS */
+  .controls {
+    display: flex; flex-wrap: wrap;
+    justify-content: center; align-items: center;
+    gap: 8px; margin-bottom: 24px; padding: 14px 20px;
+    border-radius: 14px; border: 1px solid var(--border);
+    background: var(--panel); backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+  }
+  .controls label {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 12px; color: var(--text-dim);
+    font-family: var(--font-mono);
+  }
+  .controls input {
+    width: 52px; padding: 6px 8px; border-radius: 6px;
+    border: 1px solid var(--border); background: rgba(0,0,0,0.4);
+    color: var(--text); font-family: var(--font-mono);
+    font-size: 12px; text-align: center; outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .controls input:focus {
+    border-color: var(--blue);
+    box-shadow: 0 0 0 3px rgba(59,130,246,0.15);
+  }
+  .ctrl-divider { width:1px; height:26px; background: var(--border); flex-shrink:0; }
+
+  /* BUTTONS */
+  button {
+    position: relative; display: inline-flex; align-items: center; gap: 6px;
+    padding: 9px 16px; font-size: 13px; font-weight: 500;
+    font-family: var(--font-sans); cursor: pointer;
+    border: 1px solid transparent; border-radius: 8px;
+    transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s;
+    white-space: nowrap; letter-spacing: 0.01em; overflow: hidden;
+  }
+  button::before {
+    content: ''; position: absolute; inset: 0; border-radius: inherit;
+    opacity: 0; transition: opacity 0.2s; background: rgba(255,255,255,0.07);
+  }
+  @media (hover:hover) and (pointer:fine) {
+    button:not(:disabled):hover::before { opacity:1; }
+    button:not(:disabled):hover { transform: translateY(-1px); }
+    button:not(:disabled):active { transform: translateY(0px); }
+  }
+  button:disabled { opacity: 0.35; cursor: not-allowed; }
+  .btn-start {
+    background: linear-gradient(135deg,#065f3e,var(--green));
+    border-color: rgba(34,211,160,0.4); color: white;
+    box-shadow: 0 2px 12px rgba(34,211,160,0.2);
+  }
+  .btn-start:not(:disabled):hover { box-shadow: 0 4px 22px rgba(34,211,160,0.38); }
+  .btn-stop {
+    background: linear-gradient(135deg,#7f1d2e,var(--red));
+    border-color: rgba(244,63,94,0.4); color: white;
+    box-shadow: 0 2px 12px rgba(244,63,94,0.18);
+  }
+  .btn-stop:not(:disabled):hover { box-shadow: 0 4px 22px rgba(244,63,94,0.32); }
+  .btn-alt {
+    background: linear-gradient(135deg,#1e3a8a,var(--blue));
+    border-color: rgba(59,130,246,0.5); color: white;
+    box-shadow: 0 2px 12px rgba(59,130,246,0.2);
+  }
+  .btn-alt:not(:disabled):hover { box-shadow: 0 4px 22px rgba(59,130,246,0.38); }
+  .btn-shoot {
+    background: linear-gradient(135deg,#92400e,var(--amber));
+    border-color: rgba(251,191,36,0.5); color: #0a0505;
+    font-weight: 700; font-size: 14px; padding: 10px 24px;
+    letter-spacing: 0.04em; box-shadow: 0 2px 18px rgba(251,191,36,0.28);
+  }
+  .btn-shoot:not(:disabled):hover { box-shadow: 0 6px 28px rgba(251,191,36,0.45); }
+
+  /* LAYOUT */
+  .layout { display: grid; grid-template-columns: 1fr 296px; gap: 20px; align-items: start; }
+
+  /* PANEL */
+  .panel {
+    border-radius: 16px; overflow: hidden;
+    border: 1px solid var(--border); background: var(--panel);
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    box-shadow: 0 0 0 1px rgba(59,130,246,0.06), 0 24px 56px rgba(0,0,0,0.55);
+    position: relative;
+  }
+  .panel::before {
+    content: ''; position: absolute; top:0; left:10%; right:10%; height:1px;
+    background: linear-gradient(90deg, transparent, var(--blue-bright), transparent);
+    opacity: 0.65; z-index: 1;
+  }
+  .panel header {
+    padding: 13px 18px; background: var(--panel-2);
+    display: flex; justify-content: space-between; align-items: center; gap: 12px;
+    border-bottom: 1px solid var(--border); position: relative; z-index: 1;
+  }
+  .panel-title-row { display: flex; align-items: center; gap: 10px; }
+  .panel h2 { font-size: 14px; font-weight: 600; color: var(--text); }
+  .live-badge {
+    display: flex; align-items: center; gap: 5px;
+    padding: 3px 8px; border-radius: 4px;
+    background: rgba(244,63,94,0.12); border: 1px solid rgba(244,63,94,0.38);
+    font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+    color: var(--red); letter-spacing: 0.1em; text-transform: uppercase;
+    opacity: 0; transition: opacity 0.3s;
+  }
+  .live-badge.active { opacity: 1; }
+  .live-dot { width:5px; height:5px; border-radius:50%; background:var(--red); animation: live-pulse 1.2s ease-in-out infinite; }
+  @keyframes live-pulse {
+    0%,100% { opacity:1; box-shadow:0 0 5px var(--red); }
+    50% { opacity:0.25; box-shadow:none; }
+  }
+  .stats {
+    font-family: var(--font-mono); font-size: 12px; color: var(--blue-bright);
+    padding: 4px 10px; border-radius: 6px;
+    background: var(--blue-ultra); border: 1px solid var(--border);
+    white-space: nowrap;
+  }
+
+  /* FRAME */
+  .frame {
+    aspect-ratio: 4/3; background: #000;
+    position: relative; display: flex; align-items: center; justify-content: center;
+    overflow: hidden;
+  }
+  .frame img { max-width:100%; max-height:100%; display:block; }
+  .placeholder {
+    position: absolute; color: #2a3a55;
+    font-style: italic; font-size: 13px; font-family: var(--font-mono);
+    display: flex; flex-direction: column; align-items: center; gap: 12px;
+    pointer-events: none;
+  }
+  .placeholder svg { animation: float 4s ease-in-out infinite; }
+  @keyframes float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-7px)} }
+  .fc { position:absolute; width:18px; height:18px; pointer-events:none; z-index:2; }
+  .fc--tl { top:10px; left:10px; border-top:2px solid var(--blue-bright); border-left:2px solid var(--blue-bright); }
+  .fc--tr { top:10px; right:10px; border-top:2px solid var(--blue-bright); border-right:2px solid var(--blue-bright); }
+  .fc--bl { bottom:10px; left:10px; border-bottom:2px solid var(--blue-bright); border-left:2px solid var(--blue-bright); }
+  .fc--br { bottom:10px; right:10px; border-bottom:2px solid var(--blue-bright); border-right:2px solid var(--blue-bright); }
+  .overlay { position:absolute; inset:0; pointer-events:none; display:flex; align-items:center; justify-content:center; z-index:5; }
+  .countdown {
+    opacity:0; transform:scale(1.5);
+    font-size: clamp(110px,22vw,210px);
+    font-weight:800; line-height:1; color:white;
+    text-shadow: 0 0 40px var(--blue-neon), 0 0 90px rgba(56,189,248,0.45), 0 0 160px rgba(56,189,248,0.2);
+    transition: opacity 0.13s ease, transform 0.13s ease;
+    letter-spacing: -0.05em;
+  }
+  .countdown.show { opacity:1; transform:scale(1); }
+  .flash {
+    position:absolute; inset:0; z-index:10; opacity:0;
+    background: radial-gradient(ellipse at center, white 0%, rgba(210,235,255,0.92) 100%);
+    transition: opacity 0.08s ease;
+  }
+  .flash.show { opacity:1; }
+  .status-text {
+    position:absolute; left:14px; top:14px; z-index:6;
+    padding: 6px 12px; border-radius: 6px;
+    background: rgba(4,8,15,0.82); border: 1px solid var(--border-bright);
+    color: var(--amber); font-family: var(--font-mono); font-size: 12px;
+    backdrop-filter: blur(8px); letter-spacing: 0.04em;
+  }
+
+  /* SIDEBAR / SLOTS */
+  .sidebar { display:flex; flex-direction:column; gap:14px; }
+  .shot-slot {
+    border-radius: 14px; padding: 12px;
+    border: 1px solid var(--border); background: var(--panel);
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    box-shadow: 0 4px 18px rgba(0,0,0,0.4);
+    transition: border-color 0.25s, box-shadow 0.25s, transform 0.25s;
+    position: relative; overflow: hidden;
+  }
+  .shot-slot::before {
+    content:''; position:absolute; top:0; left:0; right:0; height:1px;
+    background: linear-gradient(90deg, transparent, var(--border-bright), transparent);
+    opacity:0; transition:opacity 0.3s;
+  }
+  .shot-slot.shooting {
+    border-color: var(--amber); transform: translateY(-2px);
+    box-shadow: 0 0 0 1px rgba(251,191,36,0.3), 0 10px 28px rgba(251,191,36,0.15);
+  }
+  .shot-slot.shooting::before { opacity:0.5; background:linear-gradient(90deg,transparent,var(--amber),transparent); }
+  .shot-slot.done {
+    border-color: var(--green);
+    box-shadow: 0 0 0 1px rgba(34,211,160,0.2), 0 8px 24px rgba(34,211,160,0.1);
+  }
+  .shot-slot.done::before { opacity:1; background:linear-gradient(90deg,transparent,var(--green),transparent); }
+  .shot-slot.error {
+    border-color: var(--red);
+    box-shadow: 0 0 0 1px rgba(244,63,94,0.2), 0 8px 24px rgba(244,63,94,0.1);
+  }
+  .slot-label { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
+  .slot-number { font-size:11px; font-weight:600; color:var(--blue-bright); font-family:var(--font-mono); letter-spacing:0.08em; text-transform:uppercase; }
+  .slot-status {
+    font-size:11px; font-family:var(--font-mono); color:var(--text-dim);
+    padding:2px 7px; border-radius:4px;
+    background:rgba(0,0,0,0.3); border:1px solid var(--border);
+    transition:color 0.2s, border-color 0.2s;
+  }
+  .shot-slot.shooting .slot-status { color:var(--amber); border-color:rgba(251,191,36,0.35); }
+  .shot-slot.done .slot-status { color:var(--green); border-color:rgba(34,211,160,0.35); }
+  .shot-slot.error .slot-status { color:var(--red); border-color:rgba(244,63,94,0.35); }
+  .shot-slot .thumb {
+    aspect-ratio:4/3; background:rgba(0,0,0,0.5);
+    border-radius:8px; overflow:hidden;
+    display:flex; align-items:center; justify-content:center;
+    border:1px solid rgba(255,255,255,0.05);
+  }
+  .shot-slot .thumb img { width:100%; height:100%; object-fit:cover; display:block; animation:thumb-in 0.4s ease forwards; }
+  @keyframes thumb-in { from{opacity:0;transform:scale(1.06)} to{opacity:1;transform:scale(1)} }
+  .shot-slot .pending { color:#2a3a55; font-style:italic; font-size:11px; font-family:var(--font-mono); }
+
+  /* LOG */
+  .log-wrapper {
+    margin-top:20px; border-radius:14px;
+    border:1px solid var(--border); background:rgba(4,8,15,0.82);
+    backdrop-filter:blur(12px); overflow:hidden;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.45);
+  }
+  .log-header {
+    padding:9px 16px; background:var(--panel-2);
+    border-bottom:1px solid var(--border);
+    display:flex; align-items:center; gap:6px;
+    font-family:var(--font-mono); font-size:11px;
+    color:var(--text-dim); letter-spacing:0.06em; text-transform:uppercase;
+  }
+  .ld { width:8px; height:8px; border-radius:50%; }
+  .ld-r { background:#f43f5e; } .ld-y { background:#fbbf24; } .ld-g { background:#22d3a0; }
+  .log {
+    padding:12px 16px; min-height:68px; max-height:190px;
+    overflow-y:auto; white-space:pre-wrap;
+    font-family:var(--font-mono); font-size:12px; line-height:1.7; color:#7bafd4;
+  }
+  .log::-webkit-scrollbar { width:4px; }
+  .log::-webkit-scrollbar-track { background:transparent; }
+  .log::-webkit-scrollbar-thumb { background:var(--border); border-radius:4px; }
+
+  /* ENTRANCE */
+  .gs-fade { opacity:0; }
+  .gs-up { opacity:0; transform:translateY(22px); }
+
+  @media (max-width:900px) {
+    .layout { grid-template-columns:1fr; }
+    .sidebar { order:2; flex-direction:row; flex-wrap:wrap; }
+    .shot-slot { flex:1; min-width:140px; }
+  }
+  @media (max-width:480px) {
+    .app-wrapper { padding:16px 14px 32px; }
+    .controls { padding:12px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .countdown, button, .shot-slot, .badge-dot, .live-dot, .placeholder svg { animation:none !important; transition:none !important; }
+  }
+</style>
+</head>
+<body>
+
+<div class="noise"></div>
+
+<div class="app-wrapper">
+
+  <!-- HEADER -->
+  <header class="app-header gs-fade">
+    <div class="header-badge">
+      <span class="badge-dot"></span>Sony PTP Camera Interface
+    </div>
+    <h1>Photobox Studio</h1>
+    <p class="subtitle">Liveview MJPEG realtime — capture 3 foto berurutan dengan countdown dan preview thumbnail.</p>
+  </header>
+
+  <!-- CONTROLS BAR -->
+  <div class="controls gs-up">
+    <button class="btn-start" onclick="enableLiveview()">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8" fill="currentColor" stroke="none"/></svg>
+      Enable Camera
+    </button>
+    <button class="btn-alt" onclick="startMjpeg()">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="2" y="7" width="15" height="10" rx="2"/><path d="M22 8l-5 4 5 4V8z" fill="currentColor" stroke="none"/></svg>
+      Stream
+    </button>
+    <button class="btn-stop" onclick="stopMjpeg()">Stop</button>
+    <button class="btn-stop" onclick="disableLiveview()">Disable</button>
+    <div class="ctrl-divider"></div>
+    <label>Countdown<input id="countdownSec" type="number" value="3" min="0" max="10" /></label>
+    <label>Jeda (s)<input id="gapSec" type="number" value="1" min="0" max="10" /></label>
+    <div class="ctrl-divider"></div>
+    <button id="btn-capture" class="btn-shoot" onclick="capture3x()">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4" fill="currentColor" stroke="none"/></svg>
+      Capture 3×
+    </button>
+  </div>
+
+  <!-- MAIN LAYOUT -->
+  <div class="layout">
+
+    <!-- LIVEVIEW PANEL -->
+    <div class="panel gs-up">
+      <header>
+        <div class="panel-title-row">
+          <h2>Liveview</h2>
+          <div class="live-badge" id="live-badge">
+            <span class="live-dot"></span>LIVE
+          </div>
+        </div>
+        <div class="stats" id="stats-mjpeg">idle</div>
+      </header>
+      <div class="frame">
+        <div class="fc fc--tl"></div>
+        <div class="fc fc--tr"></div>
+        <div class="fc fc--bl"></div>
+        <div class="fc fc--br"></div>
+        <span class="placeholder" id="ph-mjpeg">
+          <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="#2a4060" stroke-width="1.4"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+          stream belum aktif
+        </span>
+        <img id="img-mjpeg" alt="Liveview" />
+        <div class="flash" id="flash"></div>
+        <div class="overlay"><div class="countdown" id="countdown"></div></div>
+        <div class="status-text" id="status-text" style="display:none;"></div>
+      </div>
+    </div>
+
+    <!-- SIDEBAR SHOTS -->
+    <div class="sidebar">
+      <div class="shot-slot gs-up" id="slot-1">
+        <div class="slot-label">
+          <span class="slot-number">Shot 01</span>
+          <span class="slot-status" id="slot-1-status">—</span>
+        </div>
+        <div class="thumb"><span class="pending">menunggu...</span></div>
+      </div>
+      <div class="shot-slot gs-up" id="slot-2">
+        <div class="slot-label">
+          <span class="slot-number">Shot 02</span>
+          <span class="slot-status" id="slot-2-status">—</span>
+        </div>
+        <div class="thumb"><span class="pending">menunggu...</span></div>
+      </div>
+      <div class="shot-slot gs-up" id="slot-3">
+        <div class="slot-label">
+          <span class="slot-number">Shot 03</span>
+          <span class="slot-status" id="slot-3-status">—</span>
+        </div>
+        <div class="thumb"><span class="pending">menunggu...</span></div>
+      </div>
+    </div>
+
+  </div><!-- /.layout -->
+
+  <!-- LOG TERMINAL -->
+  <div class="log-wrapper gs-up">
+    <div class="log-header">
+      <span class="ld ld-r"></span>
+      <span class="ld ld-y"></span>
+      <span class="ld ld-g"></span>
+      <span style="margin-left:8px;">system log</span>
+    </div>
+    <div class="log" id="log">Photobox Camera Service — siap.</div>
+  </div>
+
+</div><!-- /.app-wrapper -->
+
+<script>
+  // Entrance animations
+  window.addEventListener('DOMContentLoaded', () => {
+    gsap.to('.gs-fade', { opacity: 1, duration: 0.65, ease: 'power2.out' });
+    gsap.to('.gs-up', {
+      opacity: 1, y: 0, duration: 0.55, ease: 'power2.out',
+      stagger: 0.09, delay: 0.18
+    });
+  });
+</script>
+
+<script>
+const BASE = 'http://localhost:8080';
+const logEl = document.getElementById('log');
+
+function log(msg) {
+  logEl.textContent += '\n' + new Date().toLocaleTimeString() + '  ' + msg;
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// ===== MJPEG =====
+let mjpegFpsTimer = null;
+let mjpegRaf = null;
+let mjpegFrames = 0;
+
+function startMjpeg() {
+  stopMjpeg();
+  document.getElementById('ph-mjpeg').style.display = 'none';
+  document.getElementById('live-badge').classList.add('active');
+  const img = document.getElementById('img-mjpeg');
+  mjpegFrames = 0;
+  let lastCount = 0;
+  let lastSig = 0;
+
+  img.src = `${BASE}/liveview?t=${Date.now()}`;
+
+  function tick() {
+    const sig = img.naturalWidth * 1000 + img.naturalHeight + (img.complete ? 1 : 0);
+    if (sig !== lastSig) { lastSig = sig; mjpegFrames++; }
+    mjpegRaf = requestAnimationFrame(tick);
+  }
+  mjpegRaf = requestAnimationFrame(tick);
+
+  mjpegFpsTimer = setInterval(() => {
+    const fps = mjpegFrames - lastCount;
+    lastCount = mjpegFrames;
+    document.getElementById('stats-mjpeg').textContent = `~${fps} fps  |  ${mjpegFrames} frames`;
+  }, 1000);
+  log('MJPEG stream started');
+}
+
+function stopMjpeg() {
+  if (mjpegFpsTimer) { clearInterval(mjpegFpsTimer); mjpegFpsTimer = null; }
+  if (mjpegRaf) { cancelAnimationFrame(mjpegRaf); mjpegRaf = null; }
+  const img = document.getElementById('img-mjpeg');
+  img.removeAttribute('src');
+  document.getElementById('ph-mjpeg').style.display = 'flex';
+  document.getElementById('live-badge').classList.remove('active');
+  document.getElementById('stats-mjpeg').textContent = 'idle';
+}
+
+// ===== Camera control =====
+async function enableLiveview() {
+  try {
+    const health = await fetch(`${BASE}/`).then((r) => r.json());
+    if (!health.camera_connected) {
+      log('Camera not connected, calling POST /connect ...');
+      const conn = await fetch(`${BASE}/connect`, { method: 'POST' }).then((r) => r.json());
+      log('Connect: ' + JSON.stringify(conn));
+    } else {
+      log('Camera already connected.');
+    }
+    const r = await fetch(`${BASE}/liveview/start`, { method: 'POST' }).then((r) => r.json());
+    log('Liveview start: ' + JSON.stringify(r));
+    if (r.status === 'ok') startMjpeg();
+  } catch (e) {
+    log('ERROR: ' + e.message);
+  }
+}
+
+async function disableLiveview() {
+  stopMjpeg();
+  try {
+    const r = await fetch(`${BASE}/liveview/stop`, { method: 'POST' }).then((r) => r.json());
+    log('Liveview stop: ' + JSON.stringify(r));
+  } catch (e) {
+    log('ERROR: ' + e.message);
+  }
+}
+
+// ===== 3x Capture flow =====
+function setStatusText(text) {
+  const el = document.getElementById('status-text');
+  if (!text) { el.style.display = 'none'; el.textContent = ''; return; }
+  el.style.display = 'block';
+  el.textContent = text;
+}
+
+function setSlotStatus(index, state, text) {
+  const slot = document.getElementById(`slot-${index}`);
+  slot.classList.remove('shooting', 'done', 'error');
+  if (state) slot.classList.add(state);
+  document.getElementById(`slot-${index}-status`).textContent = text || '—';
+}
+
+function setSlotImage(index, url) {
+  document.getElementById(`slot-${index}`).querySelector('.thumb').innerHTML =
+    `<img src="${url}" alt="Shot ${index}">`;
+}
+
+function resetSlots() {
+  for (let i = 1; i <= 3; i++) {
+    const slot = document.getElementById(`slot-${i}`);
+    slot.classList.remove('shooting', 'done', 'error');
+    document.getElementById(`slot-${i}-status`).textContent = '—';
+    slot.querySelector('.thumb').innerHTML = '<span class="pending">menunggu...</span>';
+  }
+}
+
+async function showCountdown(seconds) {
+  const el = document.getElementById('countdown');
+  for (let n = seconds; n >= 1; n--) {
+    el.textContent = n;
+    el.classList.add('show');
+    await sleep(700);
+    el.classList.remove('show');
+    await sleep(300);
+  }
+  el.textContent = '';
+}
+
+async function flashScreen() {
+  const flash = document.getElementById('flash');
+  flash.classList.add('show');
+  await sleep(120);
+  flash.classList.remove('show');
+}
+
+async function capture3x() {
+  const btn = document.getElementById('btn-capture');
+  const countdownSec = Math.max(0, parseInt(document.getElementById('countdownSec').value, 10) || 0);
+  const gapSec = Math.max(0, parseInt(document.getElementById('gapSec').value, 10) || 0);
+
+  btn.disabled = true;
+  resetSlots();
+  log(`=== Mulai capture 3x (countdown ${countdownSec}s, jeda ${gapSec}s) ===`);
+
+  try {
+    for (let i = 1; i <= 3; i++) {
+      setSlotStatus(i, 'shooting', 'siap');
+      setStatusText(`Shot ${i}/3 — bersiap...`);
+
+      if (countdownSec > 0) await showCountdown(countdownSec);
+
+      setStatusText(`Shot ${i}/3 — capturing...`);
+      setSlotStatus(i, 'shooting', 'capturing');
+
+      const t0 = performance.now();
+      let resp;
+      try {
+        resp = await fetch(`${BASE}/capture`, { method: 'POST' }).then((r) => r.json());
+      } catch (e) {
+        setSlotStatus(i, 'error', 'network');
+        log(`Shot ${i} network error: ${e.message}`);
+        continue;
+      }
+
+      const dt = Math.round(performance.now() - t0);
+      await flashScreen();
+
+      if (resp.status === 'ok' && resp.file_name) {
+        const url = `${BASE}/images/${encodeURIComponent(resp.file_name)}?t=${Date.now()}`;
+        setSlotImage(i, url);
+        setSlotStatus(i, 'done', `${dt}ms`);
+        log(`Shot ${i} OK (${dt}ms) → ${resp.file_name}`);
+      } else {
+        setSlotStatus(i, 'error', 'gagal');
+        log(`Shot ${i} FAILED: ${JSON.stringify(resp)}`);
+      }
+
+      if (i < 3 && gapSec > 0) {
+        setStatusText(`Jeda ${gapSec}s sebelum shot berikutnya...`);
+        await sleep(gapSec * 1000);
+      }
+    }
+
+    setStatusText('Selesai ✓');
+    log('=== Capture 3x selesai ===');
+    await sleep(1500);
+    setStatusText('');
+  } finally {
+    btn.disabled = false;
+  }
+}
+</script>
+
+</body>
+</html>
